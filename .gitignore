@@ -1,0 +1,21 @@
+# Python 虚拟环境（里面的库有几千个文件，绝对不要传）
+.venv/
+__pycache__/
+*.pyc
+
+# 密钥！真实 .env 永远不入库
+.env
+
+# IDE 配置（含你本机路径，无意义）
+.idea/
+.vscode/
+
+# 运行时生成的产物（README 里写明怎么重新生成即可）
+jobs.db
+raw_scraped_data.json
+results.json
+skills_chart.html
+
+# 系统垃圾文件
+Thumbs.db
+.DS_Store

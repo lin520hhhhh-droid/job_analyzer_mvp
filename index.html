@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>招聘数据智能分析大屏</title>
+    <!-- 本地 ECharts -->
+    <script src="/assets/echarts.min.js"></script>
+    <!-- 🌟 引入中国地图数据 (借用 pyecharts 的 CDN) -->
+    <script src="https://assets.pyecharts.org/assets/v5/maps/china.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: #050b14;
+            background-image: linear-gradient(rgba(0, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 30px 30px;
+            color: #fff; font-family: 'Microsoft YaHei', sans-serif;
+            height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+        }
+        .header {
+            height: 60px; text-align: center; line-height: 60px; font-size: 26px; font-weight: bold;
+            color: #00ffff; text-shadow: 0 0 10px #00ffff; letter-spacing: 2px;
+        }
+        /* 🌟 核心：三列布局，中间宽，两边窄 */
+        .container {
+            flex: 1; display: grid; grid-template-columns: 25% 50% 25%;
+            gap: 15px; padding: 15px; padding-top: 0;
+        }
+        .col { display: flex; flex-direction: column; gap: 15px; }
+        .panel {
+            flex: 1; background: rgba(10, 25, 49, 0.7); border: 1px solid rgba(0, 255, 255, 0.3);
+            box-shadow: inset 0 0 15px rgba(0, 255, 255, 0.1); border-radius: 6px;
+            position: relative;
+        }
+        .panel::before { content: ''; position: absolute; top: -1px; left: -1px; width: 15px; height: 15px; border-top: 2px solid #00ffff; border-left: 2px solid #00ffff; }
+        .panel::after { content: ''; position: absolute; bottom: -1px; right: -1px; width: 15px; height: 15px; border-bottom: 2px solid #00ffff; border-right: 2px solid #00ffff; }
+        .chart { width: 100%; height: 100%; }
+
+        /* 中间数字 */
+        .kpi-box { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; z-index: 10; pointer-events: none; }
+        .kpi-item { text-align: center; }
+        .kpi-title { font-size: 14px; color: #88c0d0; }
+        .kpi-val { font-size: 32px; color: #ff9f1c; font-weight: bold; font-family: 'Courier New', monospace; text-shadow: 0 0 10px rgba(255,159,28,0.5); }
+    </style>
+</head>
+<body>
+    <div class="header">📊 招聘数据智能分析监控大屏 (真实数据版)</div>
+
+    <div class="container">
+        <!-- 左侧 -->
+        <div class="col">
+            <div class="panel"><div id="chart-pie" class="chart"></div></div>
+            <div class="panel"><div id="chart-skills" class="chart"></div></div>
+        </div>
+
+        <!-- 中间 -->
+        <div class="col">
+            <div class="panel" style="flex: 1;">
+                <div class="kpi-box">
+                    <div class="kpi-item"><div class="kpi-title">总抓取岗位</div><div class="kpi-val" id="kpi-total">0</div></div>
+                    <div class="kpi-item"><div class="kpi-title">AI 相关岗位</div><div class="kpi-val" id="kpi-ai" style="color:#00ffff;">0</div></div>
+                </div>
+                <div id="chart-map" class="chart"></div>
+            </div>
+        </div>
+
+        <!-- 右侧 -->
+        <div class="col">
+            <!-- 🌟 1. 把丢失的岗位类型图表补回来 -->
+            <div class="panel"><div id="chart-titles" class="chart"></div></div>
+
+            <!-- 🌟 2. 绝对定位强制滚动版报告 -->
+            <div class="panel" style="flex: 0.5; padding: 15px; position: relative; overflow: hidden;">
+                <div style="color: #00ffff; font-weight: bold; font-size: 16px; border-bottom: 1px solid rgba(0,255,255,0.3); padding-bottom: 8px; position: absolute; top: 15px; left: 15px; right: 15px;">
+                    🤖 DeepSeek 商业洞察报告
+                </div>
+                <div id="ai_insight_container" style="color: #ccc; font-size: 13px; line-height: 1.8; overflow-y: auto; position: absolute; top: 55px; bottom: 15px; left: 15px; right: 10px; padding-right: 5px;">
+                    正在呼叫 AI 大脑生成洞察报告中...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+                var pieChart = echarts.init(document.getElementById('chart-pie'));
+        var skillChart = echarts.init(document.getElementById('chart-skills'));
+        var titleChart = echarts.init(document.getElementById('chart-titles'));
+        var mapChart = echarts.init(document.getElementById('chart-map'));
+        // ❌ 删除了 salaryChart，因为对应元素已经没了
+
+        fetch('/api/dashboard_data')
+            .then(response => response.json())
+            .then(data => {
+                // 1. 更新 KPI 数字
+                document.getElementById('kpi-total').innerText = data.total;
+                document.getElementById('kpi-ai').innerText = data.ai_count;
+
+                // 2. 饼图
+                pieChart.setOption({
+                    title: { text: 'AI岗位占比', left: 'center', textStyle: { color: '#fff', fontSize: 14 } },
+                    tooltip: { trigger: 'item' },
+                    color: ['#00ffff', '#ff9f1c'],
+                    series: [{ type: 'pie', radius: ['40%', '65%'], data: data.ai_pie, itemStyle: { borderColor: '#050b14', borderWidth: 2 }, label: { color: '#fff' } }]
+                });
+
+                // 3. 技能柱状图
+                skillChart.setOption({
+                    title: { text: '热门技能 Top 8', left: 'center', textStyle: { color: '#fff', fontSize: 14 } },
+                    grid: { bottom: 50, top: 40, left: 40, right: 10 },
+                    xAxis: { type: 'category', data: data.skills_name, axisLabel: { color: '#ccc', rotate: 30, fontSize: 10 } },
+                    yAxis: { type: 'value', axisLabel: { color: '#ccc' }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } } },
+                    series: [{ type: 'bar', data: data.skills_value, barWidth: '40%', itemStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'#00ffff'},{offset:1,color:'#0055ff'}]) } }]
+                });
+
+                // 4. 岗位类型
+                titleChart.setOption({
+                    title: { text: '岗位类型 Top 5', left: 'center', textStyle: { color: '#fff', fontSize: 14 } },
+                    grid: { left: 80, right: 20, bottom: 30, top: 40 },
+                    xAxis: { type: 'value', axisLabel: { color: '#ccc' }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } } },
+                    yAxis: { type: 'category', data: data.titles_name, axisLabel: { color: '#ccc', fontSize: 10 } },
+                    series: [{ type: 'bar', data: data.titles_value, barWidth: '40%', itemStyle: { color: '#a2ff00' } }]
+                });
+
+                // 5. 中国地图 (分段式颜色，拒绝被极端值吸干)
+                var cityToProvince = {
+                    "北京": "北京市", "上海": "上海市", "天津": "天津市", "重庆": "重庆市",
+                    "成都": "四川省", "大连": "辽宁省", "杭州": "浙江省", "深圳": "广东省",
+                    "广州": "广东省", "南京": "江苏省", "武汉": "湖北省", "西安": "陕西省",
+                    "沈阳": "辽宁省", "青岛": "山东省", "济南": "山东省", "哈尔滨": "黑龙江省",
+                    "长春": "吉林省", "郑州": "河南省", "长沙": "湖南省", "合肥": "安徽省",
+                    "福州": "福建省", "厦门": "福建省", "南昌": "江西省", "昆明": "云南省",
+                    "南宁": "广西壮族自治区", "贵阳": "贵州省", "石家庄": "河北省", "太原": "山西省",
+                    "苏州": "江苏省", "无锡": "江苏省", "东莞": "广东省", "佛山": "广东省",
+                    "宁波": "浙江省", "温州": "浙江省", "嘉兴": "浙江省", "珠海": "广东省"
+                };
+
+                var provinceData = {};
+                data.city_data.forEach(function(item) {
+                    var prov = cityToProvince[item.name] || item.name;
+                    if (provinceData[prov]) {
+                        provinceData[prov] += item.value;
+                    } else {
+                        provinceData[prov] = item.value;
+                    }
+                });
+
+                var mapSeriesData = [];
+                for (var prov in provinceData) {
+                    mapSeriesData.push({ name: prov, value: provinceData[prov] });
+                }
+
+                mapChart.setOption({
+                    tooltip: {
+                        trigger: 'item',
+                        formatter: function(params) {
+                            let val = isNaN(params.value) ? 0 : params.value;
+                            return params.name + '<br/>岗位数量: ' + val;
+                        }
+                    },
+                    visualMap: {
+                        type: 'piecewise', // 🌟 核心改变：变成分段式
+                        pieces: [
+                            {min: 200, label: '200+ (巨头)', color: '#ff9f1c'}, // 橙色
+                            {min: 100, max: 199, label: '100-199', color: '#00ffff'}, // 青色
+                            {min: 50, max: 99, label: '50-99', color: '#1a5276'}, // 深蓝
+                            {min: 10, max: 49, label: '10-49', color: '#113355'}, // 幽蓝
+                            {min: 1, max: 9, label: '1-9', color: '#0b1a35'} // 极暗
+                        ],
+                        left: '3%',
+                        bottom: '5%',
+                        textStyle: { color: '#fff' }
+                    },
+                    series: [{
+                        name: '岗位分布', type: 'map', map: 'china', roam: false,
+                        label: { show: true, color: '#88c0d0', fontSize: 10 },
+                        itemStyle: { areaColor: '#071021', borderColor: '#00ffff', borderWidth: 0.8 },
+                        emphasis: { itemStyle: { areaColor: '#ff9f1c' }, label: { color: '#000', fontWeight: 'bold' } },
+                        data: mapSeriesData
+                    }]
+                });
+            })
+            .catch(error => console.error("数据加载失败:", error));
+
+
+        // 🌟 请求 AI 生成业务洞察报告
+        function fetchInsight() {
+            // 名字换成了新的，绝不冲突！
+            const textContainer = document.getElementById('ai_insight_container');
+
+            if (!textContainer) {
+                console.error("没找到报告容器！");
+                return;
+            }
+
+            textContainer.innerHTML = "🧠 正在结合当前数据深度思考中...<br/>请稍候...";
+
+            fetch('/api/generate_insight')
+                .then(response => response.json())
+                .then(data => {
+                    const text = data.insight;
+                    textContainer.innerHTML = "";
+
+                    let i = 0;
+                    function typeWriter() {
+                        if (i < text.length) {
+                            textContainer.innerHTML += text.charAt(i);
+                            i++;
+                            setTimeout(typeWriter, 30);
+                        }
+                    }
+                    typeWriter();
+                })
+                .catch(err => {
+                    textContainer.innerHTML = "❌ AI 生成报告失败：" + err;
+                });
+        }
+
+        // 页面加载完后，延迟 1.5 秒去要报告
+        setTimeout(fetchInsight, 1500);
+    </script>
+</body>
+</html>
