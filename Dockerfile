@@ -5,7 +5,7 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # 3. 复制依赖文件并安装 (利用缓存机制，加快速度)
-COPY templates/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 4. 复制所有项目代码
