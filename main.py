@@ -4,11 +4,18 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from openai import OpenAI
-import sqlite3
+# import sqlite3
+from sqlalchemy import create_engine
 import pandas as pd
 from collections import Counter
 import time
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL
+import os
+# 清除可能冲突的代理环境变量
+os.environ['HTTP_PROXY'] = ''
+os.environ['HTTPS_PROXY'] = ''
+# 将你的API域名加入 NO_PROXY 列表，确保直连
+os.environ['NO_PROXY'] = 'api.deepseek.com,127.0.0.1,localhost'
 # ================= 1. 初始化大模型客户端 =================
 # ⚠️ 注意：把你自己的 API Key 填在下面！
 client = OpenAI(
@@ -16,8 +23,39 @@ client = OpenAI(
     base_url=DEEPSEEK_BASE_URL
 )
 
+# ================= 2.5 定义 API 返回的数据结构 (W3-③) =================
+from typing import List, Optional
+
+class CityItem(BaseModel):
+    name: str
+    value: int
+
+class SkillItem(BaseModel):
+    name: str
+    count: int
+
+class DashboardResponse(BaseModel):
+    """大屏数据的标准返回格式"""
+    total: int
+    ai_count: int
+    ai_pie: List[dict]       # 饼图数据
+    skills_name: List[str]   # 技能名称列表
+    skills_value: List[int]  # 技能数值列表
+    titles_name: List[str]
+    titles_value: List[int]
+    salary_data: List[CityItem] # 复用上面的模型
+    city_data: List[CityItem]
+
+
 # 全局只实例化一次 app，所有的接口都挂在它上面
 app = FastAPI()
+
+# 关键配置1：创建连接池引擎
+# 格式：数据库方言+驱动://用户名:密码@主机:端口/数据库名?字符集
+DATABASE_URL = "mysql+pymysql://root:root@127.0.0.1:3307/jobs_db?charset=utf8mb4"
+
+# 关键配置2：实例化引擎，开启 pool_pre_ping
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 # ================= 2. 静态资源与图表接口 =================
 # 挂载 assets 文件夹，让 ECharts 的 js 文件能通过网络访问
@@ -106,11 +144,10 @@ def show_dashboard():
     return "index.html"
 
 
-@app.get("/api/dashboard_data")
-def get_dashboard_data():
-    conn = sqlite3.connect('jobs.db')
-    df = pd.read_sql_query("SELECT * FROM job_analysis", conn)
-    conn.close()
+@app.get("/api/dashboard_data", response_model=DashboardResponse)
+def get_dashboard_data() -> DashboardResponse:
+    # 直接把 engine 丢给 pandas，它会自动借出连接查完并归还，再也不用手动 close() 了
+    df = pd.read_sql_query("SELECT * FROM job_analysis", engine)
 
     # 1. 算 AI 占比
     ai_counts = df['is_ai_related'].value_counts()
@@ -162,9 +199,7 @@ def get_dashboard_data():
 def generate_insight():
     try:
         # 1. 读取数据
-        conn = sqlite3.connect('jobs.db')
-        df = pd.read_sql_query("SELECT * FROM job_analysis", conn)
-        conn.close()
+        df = pd.read_sql_query("SELECT * FROM job_analysis", engine)
 
         if len(df) == 0:
             return {"insight": "暂无数据，请先运行爬虫和数据处理流水线。"}

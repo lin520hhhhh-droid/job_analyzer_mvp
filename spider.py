@@ -3,7 +3,6 @@ import json
 import re
 import random
 from DrissionPage import Chromium, ChromiumOptions
-
 from font_decoder import ShixisengDecoder
 
 
@@ -17,7 +16,7 @@ class ShixisengSpider:
     def __init__(self):
         options = ChromiumOptions()
         # options.set_browser_path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
-        options.set_argument('--disable-blink-features=AutomationControlled')
+        self.argument = options.set_argument('--disable-blink-features=AutomationControlled')
 
         self.chrome = Chromium(addr_or_opts=options)
         self.tab = self.chrome.latest_tab
